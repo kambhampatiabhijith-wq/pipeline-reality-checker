@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="intro">
+  <h1>Weekly pipeline review</h1>
+  <p>Add your open deals one at a time or upload a CRM export. The tool checks each deal for signs it may slip.</p>
+</section>
+
+<div class="grid">
+  <section class="card">
+    <h2>Upload a CSV</h2>
+    <p class="muted">Columns needed: deal_id, account_name, owner, stage, deal_size_inr, last_activity_date, stage_entered_date, expected_close_date, notes. Uploading replaces the current list.</p>
+    <form action="{{ url_for('upload_csv') }}" method="post" enctype="multipart/form-data" class="stack">
+      <input type="file" name="file" accept=".csv">
+      <button type="submit" class="btn">Upload deals</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Add a deal</h2>
+    <form action="{{ url_for('add_deal') }}" method="post" class="form-grid">
+      <label>Deal ID
+        <input name="deal_id" placeholder="D008" required>
+      </label>
+      <label>Account name
+        <input name="account_name" placeholder="Acme Foods" required>
+      </label>
+      <label>Owner (rep)
+        <input name="owner" placeholder="Arjun" required>
+      </label>
+      <label>Stage
+        <select name="stage" required>
+          <option value="" disabled selected>Choose a stage</option>
+          {% for stage in stages %}
+            <option>{{ stage }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Deal size (₹)
+        <input name="deal_size_inr" type="number" min="1" step="1" placeholder="2500000" required>
+      </label>
+      <label>Last activity date
+        <input name="last_activity_date" type="date" required>
+      </label>
+      <label>Stage entered date
+        <input name="stage_entered_date" type="date" required>
+      </label>
+      <label>Expected close date
+        <input name="expected_close_date" type="date" required>
+      </label>
+      <label class="span-2">Notes
+        <textarea name="notes" rows="3" placeholder="Latest update from the rep, e.g. budget approval expected next week"></textarea>
+      </label>
+      <div class="span-2">
+        <button type="submit" class="btn">Add deal</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Deals in this review <span class="count">{{ deals|length }}</span></h2>
+    {% if deals %}
+    <form action="{{ url_for('clear_deals') }}" method="post">
+      <button type="submit" class="btn btn-ghost">Clear all</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if deals %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Deal</th>
+          <th>Owner</th>
+          <th>Stage</th>
+          <th class="num">Size</th>
+          <th>Last activity</th>
+          <th>In stage since</th>
+          <th>Expected close</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for deal in deals %}
+        <tr>
+          <td><strong>{{ deal.deal_id }}</strong><br><span class="muted">{{ deal.account_name }}</span></td>
+          <td>{{ deal.owner }}</td>
+          <td>{{ deal.stage }}</td>
+          <td class="num">{{ deal.deal_size_inr|inr }}</td>
+          <td>{{ deal.last_activity_date }}</td>
+          <td>{{ deal.stage_entered_date }}</td>
+          <td>{{ deal.expected_close_date }}</td>
+          <td class="notes" title="{{ deal.notes }}">{{ deal.notes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No deals yet. Upload sample_deals.csv or add one with the form.</p>
+  {% endif %}
+</section>
+{% endblock %}
