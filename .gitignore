@@ -57,3 +57,5 @@ __pycache__/
 __pycache__/
 *.pyc
 *.db
+node_modules/
+attached_assets/
