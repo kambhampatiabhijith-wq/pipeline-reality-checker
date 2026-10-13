@@ -1,19 +1,22 @@
 """Pipeline Reality Checker - web app entry point.
 
-Stage 2: deal input form and CSV upload.
+Stage 3: validation and rules-based risk scoring (logic layer).
 Deals are held in memory for now; stage 5 moves them into a database.
 """
 
 import csv
 import io
 import os
+from datetime import datetime
 
 from flask import Flask, flash, redirect, render_template, request, url_for
+
+from logic import STAGE_LIMITS, analyse_pipeline, today
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-only-secret")
 
-STAGES = ["Discovery", "Proposal", "Negotiation", "Contract Review"]
+STAGES = list(STAGE_LIMITS)
 
 FIELDS = [
     "deal_id",
@@ -27,8 +30,9 @@ FIELDS = [
     "notes",
 ]
 
-# In-memory list of deals (replaced by the database in stage 5).
+# In-memory storage (replaced by the database in stage 5).
 DEALS = []
+LAST_RUN = {}
 
 
 def clean_row(raw):
@@ -59,7 +63,9 @@ def format_inr(value):
 
 @app.route("/")
 def index():
-    return render_template("index.html", deals=DEALS, stages=STAGES)
+    return render_template(
+        "index.html", deals=DEALS, stages=STAGES, today=today().isoformat()
+    )
 
 
 @app.post("/deals")
@@ -109,8 +115,45 @@ def upload_csv():
 @app.post("/clear")
 def clear_deals():
     DEALS.clear()
+    LAST_RUN.clear()
     flash("Cleared all deals.", "ok")
     return redirect(url_for("index"))
+
+
+@app.post("/analyse")
+def analyse():
+    if not DEALS:
+        flash("Add or upload some deals first.", "error")
+        return redirect(url_for("index"))
+
+    raw_date = request.form.get("review_date") or today().isoformat()
+    try:
+        review_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError:
+        flash("The review date isn't valid. Use the date picker.", "error")
+        return redirect(url_for("index"))
+
+    results, rejected = analyse_pipeline(DEALS, review_date)
+
+    LAST_RUN.clear()
+    LAST_RUN.update(
+        review_date=review_date,
+        results=results,
+        rejected=rejected,
+        counts={
+            tier: sum(1 for r in results if r["tier"] == tier)
+            for tier in ("At Risk", "Watch", "Healthy")
+        },
+    )
+    return redirect(url_for("results"))
+
+
+@app.route("/results")
+def results():
+    if not LAST_RUN:
+        flash("Run an analysis first.", "error")
+        return redirect(url_for("index"))
+    return render_template("results.html", run=LAST_RUN)
 
 
 if __name__ == "__main__":

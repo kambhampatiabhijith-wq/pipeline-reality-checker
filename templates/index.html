@@ -69,6 +69,16 @@
   </div>
 
   {% if deals %}
+  <form action="{{ url_for('analyse') }}" method="post" class="analyse-bar">
+    <label>Review date
+      <input type="date" name="review_date" value="{{ today }}">
+    </label>
+    <button type="submit" class="btn">Analyse pipeline</button>
+    <span class="muted">All checks are measured from this date. Set it to 2026-10-13 to reproduce the demo results.</span>
+  </form>
+  {% endif %}
+
+  {% if deals %}
   <div class="table-scroll">
     <table>
       <thead>

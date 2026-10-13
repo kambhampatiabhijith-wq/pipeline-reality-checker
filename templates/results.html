@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Results - Pipeline Reality Checker{% endblock %}
+
+{% block content %}
+<section class="intro">
+  <h1>Pipeline review results</h1>
+  <p>Review date {{ run.review_date }}. Deals that need attention are listed first.</p>
+</section>
+
+<div class="stats">
+  <div class="stat stat-risk">
+    <span class="stat-num">{{ run.counts["At Risk"] }}</span>
+    <span class="stat-label">At Risk</span>
+  </div>
+  <div class="stat stat-watch">
+    <span class="stat-num">{{ run.counts["Watch"] }}</span>
+    <span class="stat-label">Watch</span>
+  </div>
+  <div class="stat stat-healthy">
+    <span class="stat-num">{{ run.counts["Healthy"] }}</span>
+    <span class="stat-label">Healthy</span>
+  </div>
+  <div class="stat">
+    <span class="stat-num">{{ run.rejected|length }}</span>
+    <span class="stat-label">Rejected</span>
+  </div>
+</div>
+
+{% for r in run.results %}
+{% set tier_class = {"At Risk": "risk", "Watch": "watch", "Healthy": "healthy"}[r.tier] %}
+<article class="card result result-{{ tier_class }}">
+  <div class="result-head">
+    <div>
+      <h2>{{ r.deal.deal_id }} · {{ r.deal.account_name }}</h2>
+      <p class="muted">{{ r.deal.owner }} · {{ r.deal.stage }} · {{ r.deal.deal_size_inr|inr }}</p>
+    </div>
+    <div class="result-badges">
+      <span class="badge badge-{{ tier_class }}">{{ r.tier }}</span>
+      <span class="score">Score {{ r.score }}/100</span>
+    </div>
+  </div>
+
+  <div class="facts">
+    <span>{{ r.days_inactive }} days since last activity</span>
+    <span>{{ r.days_in_stage }} days in {{ r.deal.stage }}</span>
+    <span>Close date {{ r.deal.expected_close_date }}</span>
+  </div>
+
+  <h3>Why</h3>
+  {% if r.signals %}
+  <ul class="signals">
+    {% for s in r.signals %}
+    <li>
+      <span class="pts">+{{ s.points }}</span>
+      <span><strong>{{ s.label }}{% if s.strong %} (strong){% endif %}.</strong> {{ s.detail }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No rule fired. Activity, time in stage and close date are all within limits.</p>
+  {% endif %}
+
+  <div class="result-foot">
+    <p><strong>Next action:</strong> {{ r.next_action }}</p>
+    <p class="muted">Confidence: <strong>{{ r.confidence }}</strong>. {{ r.confidence_reason }}</p>
+  </div>
+</article>
+{% endfor %}
+
+{% if run.rejected %}
+<section class="card rejected">
+  <h2>Rejected deals <span class="count count-error">{{ run.rejected|length }}</span></h2>
+  <p class="muted">These rows were not scored. Fix the data and analyse again.</p>
+  {% for item in run.rejected %}
+  <div class="reject-item">
+    <strong>{{ item.deal.deal_id or "(no ID)" }}</strong> {{ item.deal.account_name }}
+    <ul>
+      {% for e in item.errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<p><a href="{{ url_for('index') }}" class="btn btn-ghost">Back to deals</a></p>
+{% endblock %}
