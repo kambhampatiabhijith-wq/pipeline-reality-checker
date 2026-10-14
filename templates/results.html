@@ -8,6 +8,15 @@
   <p>Review date {{ run.review_date }}. Deals that need attention are listed first.</p>
 </section>
 
+{% if run.ai.used %}
+<div class="flash flash-ok">
+  AI note analysis on: {{ run.ai.provider }} ({{ run.ai.model }}) read the notes of {{ run.ai.deals_sent }} deals.
+  {% if run.ai.dropped %}{{ run.ai.dropped }} AI claim{{ "s" if run.ai.dropped != 1 }} dropped because the evidence didn't check out.{% else %}Every AI claim was checked against the notes.{% endif %}
+</div>
+{% else %}
+<div class="flash flash-warn">{{ run.ai.message }}</div>
+{% endif %}
+
 <div class="stats">
   <div class="stat stat-risk">
     <span class="stat-num">{{ run.counts["At Risk"] }}</span>
@@ -38,8 +47,15 @@
     <div class="result-badges">
       <span class="badge badge-{{ tier_class }}">{{ r.tier }}</span>
       <span class="score">Score {{ r.score }}/100</span>
+      {% if r.score != r.rule_score %}
+      <span class="score">Rules {{ r.rule_score }}, notes {{ "%+d"|format(r.score - r.rule_score) }}</span>
+      {% endif %}
     </div>
   </div>
+
+  {% if r.ai_reason %}
+  <p class="summary">{{ r.ai_reason }}</p>
+  {% endif %}
 
   <div class="facts">
     <span>{{ r.days_inactive }} days since last activity</span>
@@ -48,22 +64,47 @@
   </div>
 
   <h3>Why</h3>
-  {% if r.signals %}
+  {% if r.signals or r.note_signals or r.explained %}
   <ul class="signals">
     {% for s in r.signals %}
     <li>
       <span class="pts">+{{ s.points }}</span>
+      <span class="src src-rule">Rule</span>
       <span><strong>{{ s.label }}{% if s.strong %} (strong){% endif %}.</strong> {{ s.detail }}</span>
     </li>
     {% endfor %}
+    {% for s in r.note_signals %}
+    <li>
+      <span class="pts">+{{ s.points }}</span>
+      <span class="src src-note">Notes</span>
+      <span><strong>{{ s.label }}.</strong> <q>{{ s.quote }}</q></span>
+    </li>
+    {% endfor %}
+    {% if r.explained %}
+    <li>
+      <span class="pts pts-minus">{{ r.explained.points }}</span>
+      <span class="src src-note">Notes</span>
+      <span><strong>Notes explain the quiet period.</strong> <q>{{ r.explained.quote }}</q></span>
+    </li>
+    {% endif %}
   </ul>
+  {% if r.capped %}
+  <p class="muted">Capped at 49: evidence from the notes alone can't make a deal At Risk.</p>
+  {% endif %}
   {% else %}
-  <p class="muted">No rule fired. Activity, time in stage and close date are all within limits.</p>
+  <p class="muted">No rule fired and the notes show no risk.</p>
+  {% endif %}
+
+  {% if r.dropped %}
+  <details class="dropped">
+    <summary>{{ r.dropped|length }} AI claim{{ "s" if r.dropped|length != 1 }} dropped</summary>
+    <ul>{% for d in r.dropped %}<li>{{ d }}</li>{% endfor %}</ul>
+  </details>
   {% endif %}
 
   <div class="result-foot">
-    <p><strong>Next action:</strong> {{ r.next_action }}</p>
-    <p class="muted">Confidence: <strong>{{ r.confidence }}</strong>. {{ r.confidence_reason }}</p>
+    <p><strong>Next action:</strong> {{ r.next_action }} <span class="src">{{ r.action_source }}</span></p>
+    <p class="muted">Confidence: <strong class="conf-{{ r.confidence|lower }}">{{ r.confidence }}</strong>. {{ r.confidence_reason }}</p>
   </div>
 </article>
 {% endfor %}

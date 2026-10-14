@@ -1,6 +1,6 @@
 """Pipeline Reality Checker - web app entry point.
 
-Stage 3: validation and rules-based risk scoring (logic layer).
+Stage 4: logic layer (validation + rules) followed by the AI note analysis.
 Deals are held in memory for now; stage 5 moves them into a database.
 """
 
@@ -11,6 +11,7 @@ from datetime import datetime
 
 from flask import Flask, flash, redirect, render_template, request, url_for
 
+from ai import apply_ai
 from logic import STAGE_LIMITS, analyse_pipeline, today
 
 app = Flask(__name__)
@@ -133,13 +134,17 @@ def analyse():
         flash("The review date isn't valid. Use the date picker.", "error")
         return redirect(url_for("index"))
 
+    # 1) Logic layer: validate and score with rules.
     results, rejected = analyse_pipeline(DEALS, review_date)
+    # 2) AI layer: read notes, verify quotes, adjust within limits.
+    ai_status = apply_ai(results, review_date)
 
     LAST_RUN.clear()
     LAST_RUN.update(
         review_date=review_date,
         results=results,
         rejected=rejected,
+        ai=ai_status,
         counts={
             tier: sum(1 for r in results if r["tier"] == tier)
             for tier in ("At Risk", "Watch", "Healthy")
