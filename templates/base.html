@@ -12,7 +12,8 @@
       <a class="brand" href="{{ url_for('index') }}">Pipeline Reality Checker</a>
       <nav>
         <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Deals</a>
-        <a href="{{ url_for('results') }}" class="{% if request.endpoint == 'results' %}active{% endif %}">Results</a>
+        <a href="{{ url_for('results') }}" class="{% if request.endpoint in ('results', 'view_run') %}active{% endif %}">Results</a>
+        <a href="{{ url_for('history') }}" class="{% if request.endpoint == 'history' %}active{% endif %}">History</a>
       </nav>
     </div>
   </header>

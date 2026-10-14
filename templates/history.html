@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}History - Pipeline Reality Checker{% endblock %}
+
+{% block content %}
+<section class="intro">
+  <h1>Analysis history</h1>
+  <p>Every analysis is saved. Open a run to see its results or record what happened to each deal.</p>
+</section>
+
+<section class="card">
+  {% if runs %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Saved at</th>
+          <th>Review date</th>
+          <th class="num">Scored</th>
+          <th class="num">At Risk</th>
+          <th class="num">Watch</th>
+          <th class="num">Healthy</th>
+          <th class="num">Rejected</th>
+          <th>AI</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td><strong>#{{ run.id }}</strong></td>
+          <td>{{ run.created_at }}</td>
+          <td>{{ run.review_date }}</td>
+          <td class="num">{{ run.deals_scored }}</td>
+          <td class="num tier-risk">{{ run.at_risk }}</td>
+          <td class="num tier-watch">{{ run.watch }}</td>
+          <td class="num tier-healthy">{{ run.healthy }}</td>
+          <td class="num">{{ run.rejected }}</td>
+          <td>{% if run.ai_used %}{{ run.ai_provider }}{% else %}<span class="muted">Rules only</span>{% endif %}</td>
+          <td><a href="{{ url_for('view_run', run_id=run.id) }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No analyses yet. Load deals on the Deals page and click Analyse pipeline.</p>
+  {% endif %}
+</section>
+{% endblock %}

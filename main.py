@@ -1,7 +1,7 @@
 """Pipeline Reality Checker - web app entry point.
 
-Stage 4: logic layer (validation + rules) followed by the AI note analysis.
-Deals are held in memory for now; stage 5 moves them into a database.
+Stage 5: deals, analysis runs, outcomes and overrides are saved in SQLite.
+Pipeline per run: validation + rules (logic.py) -> AI notes (ai.py) -> database (db.py).
 """
 
 import csv
@@ -9,13 +9,16 @@ import io
 import os
 from datetime import datetime
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, url_for
 
+import db
 from ai import apply_ai
 from logic import STAGE_LIMITS, analyse_pipeline, today
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-only-secret")
+
+db.init_db()
 
 STAGES = list(STAGE_LIMITS)
 
@@ -30,10 +33,6 @@ FIELDS = [
     "expected_close_date",
     "notes",
 ]
-
-# In-memory storage (replaced by the database in stage 5).
-DEALS = []
-LAST_RUN = {}
 
 
 def clean_row(raw):
@@ -62,17 +61,19 @@ def format_inr(value):
     return f"{sign}₹{digits}"
 
 
+# ---------- Deals for the next review ----------
+
 @app.route("/")
 def index():
     return render_template(
-        "index.html", deals=DEALS, stages=STAGES, today=today().isoformat()
+        "index.html", deals=db.get_current_deals(), stages=STAGES, today=today().isoformat()
     )
 
 
 @app.post("/deals")
 def add_deal():
     deal = clean_row(request.form)
-    DEALS.append(deal)
+    db.add_current_deal(deal)
     flash(f"Added deal {deal['deal_id'] or '(no ID)'}.", "ok")
     return redirect(url_for("index"))
 
@@ -107,23 +108,24 @@ def upload_csv():
         return redirect(url_for("index"))
 
     # An upload replaces the current list, so each review starts clean.
-    DEALS.clear()
-    DEALS.extend(rows)
+    db.replace_current_deals(rows)
     flash(f"Loaded {len(rows)} deals from {file.filename}.", "ok")
     return redirect(url_for("index"))
 
 
 @app.post("/clear")
 def clear_deals():
-    DEALS.clear()
-    LAST_RUN.clear()
-    flash("Cleared all deals.", "ok")
+    db.clear_current_deals()
+    flash("Cleared the deals list. Past results are still in History.", "ok")
     return redirect(url_for("index"))
 
 
+# ---------- Analysis ----------
+
 @app.post("/analyse")
 def analyse():
-    if not DEALS:
+    deals = db.get_current_deals()
+    if not deals:
         flash("Add or upload some deals first.", "error")
         return redirect(url_for("index"))
 
@@ -135,30 +137,80 @@ def analyse():
         return redirect(url_for("index"))
 
     # 1) Logic layer: validate and score with rules.
-    results, rejected = analyse_pipeline(DEALS, review_date)
+    results, rejected = analyse_pipeline(deals, review_date)
     # 2) AI layer: read notes, verify quotes, adjust within limits.
     ai_status = apply_ai(results, review_date)
+    # 3) Database: save the whole run.
+    run_id = db.save_run(review_date, results, rejected, ai_status)
 
-    LAST_RUN.clear()
-    LAST_RUN.update(
-        review_date=review_date,
-        results=results,
-        rejected=rejected,
-        ai=ai_status,
-        counts={
-            tier: sum(1 for r in results if r["tier"] == tier)
-            for tier in ("At Risk", "Watch", "Healthy")
-        },
-    )
-    return redirect(url_for("results"))
+    return redirect(url_for("view_run", run_id=run_id))
 
 
 @app.route("/results")
 def results():
-    if not LAST_RUN:
+    run_id = db.latest_run_id()
+    if run_id is None:
         flash("Run an analysis first.", "error")
         return redirect(url_for("index"))
-    return render_template("results.html", run=LAST_RUN)
+    return redirect(url_for("view_run", run_id=run_id))
+
+
+@app.route("/runs/<int:run_id>")
+def view_run(run_id):
+    run = db.load_run(run_id)
+    if run is None:
+        abort(404)
+    return render_template(
+        "results.html", run=run, outcomes=db.get_outcomes(), outcome_options=db.OUTCOMES
+    )
+
+
+@app.route("/history")
+def history():
+    return render_template("history.html", runs=db.list_runs())
+
+
+# ---------- Outcomes and overrides ----------
+
+@app.post("/outcome")
+def record_outcome():
+    deal_id = (request.form.get("deal_id") or "").strip()
+    outcome = request.form.get("outcome")
+    run_id = request.form.get("run_id", type=int)
+    result_id = request.form.get("result_id", type=int)
+    try:
+        if not deal_id:
+            raise ValueError("Missing deal ID.")
+        db.set_outcome(deal_id, outcome)
+        flash(f"Saved outcome for {deal_id}: {outcome}.", "ok")
+    except ValueError as e:
+        flash(str(e), "error")
+    target = url_for("view_run", run_id=run_id) if run_id else url_for("results")
+    return redirect(f"{target}#result-{result_id}" if result_id else target)
+
+
+@app.post("/override/<int:result_id>")
+def override(result_id):
+    run_id = db.run_id_for_result(result_id)
+    if run_id is None:
+        abort(404)
+    reason = (request.form.get("reason") or "").strip()
+    if not reason:
+        flash("Add a short reason before marking a deal as not at risk.", "error")
+    else:
+        db.set_override(result_id, reason[:300])
+        flash("Saved. The flag is marked as not at risk, with your reason.", "ok")
+    return redirect(url_for("view_run", run_id=run_id) + f"#result-{result_id}")
+
+
+@app.post("/override/<int:result_id>/undo")
+def undo_override(result_id):
+    run_id = db.run_id_for_result(result_id)
+    if run_id is None:
+        abort(404)
+    db.clear_override(result_id)
+    flash("Override removed.", "ok")
+    return redirect(url_for("view_run", run_id=run_id) + f"#result-{result_id}")
 
 
 if __name__ == "__main__":

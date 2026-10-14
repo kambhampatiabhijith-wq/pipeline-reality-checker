@@ -186,3 +186,18 @@ q { font-style: italic; color: var(--text); }
 .conf-high { color: var(--healthy); }
 .conf-medium { color: var(--watch); }
 .conf-low { color: var(--risk); }
+
+/* ---------- Stage 5: outcomes, overrides, history ---------- */
+.manager { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
+.outcome-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.manager-label { font-size: 13px; font-weight: 600; margin-right: 4px; }
+.chip { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 14px; border: 1px solid var(--line); background: #fff; color: var(--text); cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+.chip-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.override-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.override-form input { flex: 1; min-width: 200px; font-size: 14px; }
+.override-done { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; background: var(--bg); padding: 8px 10px; border-radius: 6px; }
+.link-btn { font: inherit; font-size: 13px; background: none; border: none; color: var(--accent); cursor: pointer; text-decoration: underline; padding: 0; }
+.tier-risk { color: var(--risk); font-weight: 700; }
+.tier-watch { color: var(--watch); font-weight: 700; }
+.tier-healthy { color: var(--healthy); font-weight: 700; }
