@@ -304,3 +304,86 @@ def clear_override(result_id):
             "UPDATE deal_results SET override_reason = NULL, overridden_at = NULL WHERE id = ?",
             (result_id,),
         )
+
+
+# ---------- Admin dashboard ----------
+
+def dashboard_stats():
+    """Everything the admin dashboard shows, computed from the saved data."""
+    with connect() as conn:
+        runs = conn.execute("SELECT * FROM runs ORDER BY id").fetchall()
+        all_results = conn.execute(
+            "SELECT tier, signals, note_signals, explained, override_reason FROM deal_results"
+        ).fetchall()
+        # The most recent result for each deal is the one judged against its outcome.
+        latest = conn.execute(
+            """SELECT dr.deal_id, dr.tier, o.outcome
+               FROM deal_results dr
+               JOIN (SELECT deal_id, MAX(id) AS max_id FROM deal_results GROUP BY deal_id) last
+                 ON dr.id = last.max_id
+               LEFT JOIN outcomes o ON o.deal_id = dr.deal_id"""
+        ).fetchall()
+        overrides = conn.execute(
+            """SELECT id, run_id, deal_id, account_name, tier, override_reason, overridden_at
+               FROM deal_results WHERE override_reason IS NOT NULL
+               ORDER BY overridden_at DESC LIMIT 10"""
+        ).fetchall()
+
+    tiers = ("At Risk", "Watch", "Healthy")
+
+    # Outcome matrix: latest tier x recorded outcome.
+    matrix = {t: {o: 0 for o in OUTCOMES} for t in tiers}
+    for row in latest:
+        if row["outcome"]:
+            matrix[row["tier"]][row["outcome"]] += 1
+
+    def share_bad(rows_for):
+        closed = sum(rows_for[o] for o in ("Won", "Lost", "Slipped"))
+        bad = rows_for["Lost"] + rows_for["Slipped"]
+        return (round(100 * bad / closed) if closed else None), closed
+
+    at_risk_accuracy, at_risk_closed = share_bad(matrix["At Risk"])
+    healthy_bad, healthy_closed = share_bad(matrix["Healthy"])
+
+    flagged = sum(1 for r in all_results if r["tier"] != "Healthy")
+    overridden = sum(1 for r in all_results if r["override_reason"])
+    override_rate = round(100 * overridden / flagged) if flagged else None
+
+    # Flags by reason, across every saved result.
+    reasons = {}
+    for r in all_results:
+        for s in json.loads(r["signals"] or "[]"):
+            key = ("Rule", s["label"])
+            reasons[key] = reasons.get(key, 0) + 1
+        for s in json.loads(r["note_signals"] or "[]"):
+            key = ("Notes", s["label"])
+            reasons[key] = reasons.get(key, 0) + 1
+        if json.loads(r["explained"] or "null"):
+            key = ("Notes", "Quiet period explained (lowered)")
+            reasons[key] = reasons.get(key, 0) + 1
+    reason_rows = sorted(
+        ({"source": k[0], "label": k[1], "count": v} for k, v in reasons.items()),
+        key=lambda x: -x["count"],
+    )
+
+    ai_runs = sum(1 for r in runs if r["ai_used"])
+    return {
+        "total_runs": len(runs),
+        "deals_tracked": len(latest),
+        "outcomes_recorded": sum(1 for r in latest if r["outcome"]),
+        "ai_runs": ai_runs,
+        "ai_rate": round(100 * ai_runs / len(runs)) if runs else None,
+        "ai_dropped": sum(r["ai_dropped"] or 0 for r in runs),
+        "at_risk_accuracy": at_risk_accuracy,
+        "at_risk_closed": at_risk_closed,
+        "healthy_bad": healthy_bad,
+        "healthy_closed": healthy_closed,
+        "flagged": flagged,
+        "overridden": overridden,
+        "override_rate": override_rate,
+        "matrix": matrix,
+        "reasons": reason_rows,
+        "overrides": overrides,
+        "recent_runs": runs[-12:],
+        "failed_runs": [r for r in reversed(runs) if not r["ai_used"]][:5],
+    }

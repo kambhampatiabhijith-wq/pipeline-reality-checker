@@ -1,6 +1,6 @@
 """Pipeline Reality Checker - web app entry point.
 
-Stage 5: deals, analysis runs, outcomes and overrides are saved in SQLite.
+Stage 6: admin dashboard on top of the saved runs, outcomes and overrides.
 Pipeline per run: validation + rules (logic.py) -> AI notes (ai.py) -> database (db.py).
 """
 
@@ -168,6 +168,25 @@ def view_run(run_id):
 @app.route("/history")
 def history():
     return render_template("history.html", runs=db.list_runs())
+
+
+@app.route("/dashboard")
+def dashboard():
+    stats = db.dashboard_stats()
+    chart_runs = {
+        "labels": [f"#{r['id']}" for r in stats["recent_runs"]],
+        "at_risk": [r["at_risk"] for r in stats["recent_runs"]],
+        "watch": [r["watch"] for r in stats["recent_runs"]],
+        "healthy": [r["healthy"] for r in stats["recent_runs"]],
+    }
+    chart_reasons = {
+        "labels": [f"{x['label']} ({x['source']})" for x in stats["reasons"]],
+        "counts": [x["count"] for x in stats["reasons"]],
+    }
+    return render_template(
+        "dashboard.html", stats=stats, chart_runs=chart_runs, chart_reasons=chart_reasons,
+        limits=STAGE_LIMITS, outcome_options=db.OUTCOMES,
+    )
 
 
 # ---------- Outcomes and overrides ----------

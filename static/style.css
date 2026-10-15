@@ -201,3 +201,24 @@ q { font-style: italic; color: var(--text); }
 .tier-risk { color: var(--risk); font-weight: 700; }
 .tier-watch { color: var(--watch); font-weight: 700; }
 .tier-healthy { color: var(--healthy); font-weight: 700; }
+
+/* ---------- Stage 6: admin dashboard ---------- */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.kpi-label { font-size: 13px; color: var(--muted); font-weight: 600; }
+.kpi-num { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.kpi-note { font-size: 13px; color: var(--muted); }
+.kpi-note .ok { color: var(--healthy); font-weight: 700; }
+.kpi-note .bad { color: var(--risk); font-weight: 700; }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dash-grid .card { margin-bottom: 16px; }
+.chart-box { position: relative; height: 280px; }
+.matrix td:first-child { font-weight: 700; }
+.plain-list { list-style: none; padding: 0; margin: 0; }
+.plain-list li { padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.plain-list li:first-child { border-top: none; }
+
+@media (max-width: 800px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .dash-grid { grid-template-columns: 1fr; }
+}

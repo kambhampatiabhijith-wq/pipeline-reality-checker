@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Pipeline Reality Checker{% endblock %}
+
+{% macro pct(value) %}{% if value is none %}–{% else %}{{ value }}%{% endif %}{% endmacro %}
+
+{% block content %}
+<section class="intro">
+  <h1>Admin dashboard</h1>
+  <p>Is the tool flagging the right deals? Built from every saved run, the outcomes recorded later, and manager overrides.</p>
+</section>
+
+<div class="kpis">
+  <div class="kpi">
+    <span class="kpi-label">At Risk flags that were right</span>
+    <span class="kpi-num">{{ pct(stats.at_risk_accuracy) }}</span>
+    <span class="kpi-note">
+      {% if stats.at_risk_closed < 3 %}Needs 3+ At Risk deals with outcomes ({{ stats.at_risk_closed }} so far).
+      {% elif stats.at_risk_accuracy >= 60 %}<span class="ok">On target</span> (60%+ lost or slipped).
+      {% else %}<span class="bad">Below target</span> of 60%. Rules may be too loose.{% endif %}
+    </span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Flags overridden by managers</span>
+    <span class="kpi-num">{{ pct(stats.override_rate) }}</span>
+    <span class="kpi-note">
+      {{ stats.overridden }} of {{ stats.flagged }} flags.
+      {% if stats.override_rate is none %}No flags yet.
+      {% elif stats.override_rate < 20 %}<span class="ok">On target</span> (under 20%).
+      {% else %}<span class="bad">Above target</span> of 20%. Thresholds may be too tight.{% endif %}
+    </span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Healthy deals that slipped anyway</span>
+    <span class="kpi-num">{{ pct(stats.healthy_bad) }}</span>
+    <span class="kpi-note">Missed risks, from {{ stats.healthy_closed }} Healthy deals with outcomes.</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Runs with AI analysis</span>
+    <span class="kpi-num">{{ pct(stats.ai_rate) }}</span>
+    <span class="kpi-note">{{ stats.ai_runs }} of {{ stats.total_runs }} runs. {{ stats.ai_dropped }} AI claim{{ "s" if stats.ai_dropped != 1 }} dropped for weak evidence.</span>
+  </div>
+</div>
+
+{% if not stats.total_runs %}
+<section class="card"><p class="empty">No analyses yet. Run one from the Deals page and the dashboard fills in.</p></section>
+{% else %}
+
+<div class="dash-grid">
+  <section class="card">
+    <h2>Risk mix by run</h2>
+    <p class="muted">Deals per tier in the last {{ stats.recent_runs|length }} runs.</p>
+    <div class="chart-box"><canvas id="runsChart" aria-label="Deals per tier by run" role="img"></canvas></div>
+  </section>
+
+  <section class="card">
+    <h2>Flags by reason</h2>
+    <p class="muted">How often each signal fired, across all saved results.</p>
+    {% if stats.reasons %}
+    <div class="chart-box" style="height: {{ 60 + 34 * stats.reasons|length }}px"><canvas id="reasonsChart" aria-label="Signal counts by reason" role="img"></canvas></div>
+    {% else %}
+    <p class="empty">No signals have fired yet.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Flags vs what actually happened</h2>
+  <p class="muted">Each deal's most recent tier against the outcome recorded on the Results page. {{ stats.outcomes_recorded }} of {{ stats.deals_tracked }} deals have an outcome.</p>
+  <div class="table-scroll">
+    <table class="matrix">
+      <thead>
+        <tr><th>Tier</th>{% for o in outcome_options %}<th class="num">{{ o }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for tier, row in stats.matrix.items() %}
+        <tr>
+          <td class="tier-{{ {'At Risk': 'risk', 'Watch': 'watch', 'Healthy': 'healthy'}[tier] }}">{{ tier }}</td>
+          {% for o in outcome_options %}<td class="num">{{ row[o] }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="dash-grid">
+  <section class="card">
+    <h2>Recent manager overrides</h2>
+    {% if stats.overrides %}
+    <ul class="plain-list">
+      {% for o in stats.overrides %}
+      <li>
+        <a href="{{ url_for('view_run', run_id=o.run_id) }}#result-{{ o.id }}"><strong>{{ o.deal_id }}</strong></a>
+        {{ o.account_name }} <span class="muted">({{ o.tier }}, run #{{ o.run_id }}, {{ o.overridden_at }})</span>
+        <br><q>{{ o.override_reason }}</q>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No overrides yet. Each one is a possible false positive worth reviewing.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Current rules</h2>
+    <p class="muted">Days allowed before a rule fires.</p>
+    <table>
+      <thead><tr><th>Stage</th><th class="num">No activity</th><th class="num">In stage</th></tr></thead>
+      <tbody>
+        {% for stage, l in limits.items() %}
+        <tr><td>{{ stage }}</td><td class="num">{{ l.inactive }}</td><td class="num">{{ l.in_stage }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+{% if stats.failed_runs %}
+<section class="card">
+  <h2>Runs without AI</h2>
+  <p class="muted">These runs fell back to rules-only results.</p>
+  <ul class="plain-list">
+    {% for r in stats.failed_runs %}
+    <li><a href="{{ url_for('view_run', run_id=r.id) }}"><strong>Run #{{ r.id }}</strong></a> <span class="muted">{{ r.created_at }}</span><br>{{ r.ai_message }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if stats.total_runs %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+  const css = getComputedStyle(document.documentElement);
+  const color = name => css.getPropertyValue(name).trim();
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = color("--muted");
+
+  const runs = {{ chart_runs|tojson }};
+  const tierSeries = [
+    ["At Risk", runs.at_risk, "--risk"],
+    ["Watch", runs.watch, "--watch"],
+    ["Healthy", runs.healthy, "--healthy"],
+  ];
+  new Chart(document.getElementById("runsChart"), {
+    type: "bar",
+    data: {
+      labels: runs.labels,
+      datasets: tierSeries.map(([label, data, token]) => ({
+        label, data,
+        backgroundColor: color(token),
+        borderColor: color("--card"), borderWidth: { top: 2 },
+        borderRadius: 4, borderSkipped: false, maxBarThickness: 36,
+      })),
+    },
+    options: {
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, grid: { display: false }, title: { display: true, text: "Run" } },
+        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 },
+             grid: { color: color("--line") }, title: { display: true, text: "Deals" } },
+      },
+      plugins: { legend: { position: "top", align: "start", labels: { boxWidth: 12 } } },
+      interaction: { mode: "index", intersect: false },
+    },
+  });
+
+  const reasons = {{ chart_reasons|tojson }};
+  const reasonsEl = document.getElementById("reasonsChart");
+  if (reasonsEl) {
+    new Chart(reasonsEl, {
+      type: "bar",
+      data: {
+        labels: reasons.labels,
+        datasets: [{ label: "Times fired", data: reasons.counts,
+                     backgroundColor: color("--accent"), borderRadius: 4, maxBarThickness: 22 }],
+      },
+      options: {
+        indexAxis: "y",
+        maintainAspectRatio: false,
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: color("--line") } },
+          y: { grid: { display: false }, ticks: { color: color("--text") } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+</script>
+{% endif %}
+{% endblock %}
